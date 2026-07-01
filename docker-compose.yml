@@ -1,45 +1,85 @@
-version: '3.8'
+version: "3.9"
+
+name: techpro-crm
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: techpro_db
-    restart: always
+
+  postgres:
+    image: postgres:16
+    container_name: techpro-postgres
+    restart: unless-stopped
+
     environment:
-      POSTGRES_USER: ${DB_USER:-techpro_admin}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-SuperSecretPassword2026!}
-      POSTGRES_DB: ${DB_NAME:-techpro_crm}
+      POSTGRES_USER: techpro
+      POSTGRES_PASSWORD: techpro123
+      POSTGRES_DB: techpro_crm
+
     ports:
       - "5432:5432"
+
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U techpro"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - techpro_network
 
   backend:
-    build: 
+
+    build:
       context: ./backend
-    container_name: techpro_backend
-    restart: always
+
+    container_name: techpro-backend
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
     depends_on:
-      - db
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${DB_USER:-techpro_admin}:${DB_PASSWORD:-SuperSecretPassword2026!}@db:5432/${DB_NAME:-techpro_crm}
-      SECRET_KEY: ${JWT_SECRET_KEY:-your-256-bit-secret-key-here}
-      ALGORITHM: "HS256"
-      ACCESS_TOKEN_EXPIRE_MINUTES: 1440
+      postgres:
+        condition: service_healthy
+
+    volumes:
+      - ./backend:/app
+
     ports:
       - "8000:8000"
 
+    networks:
+      - techpro_network
+
   frontend:
-    image: nginx:alpine
-    container_name: techpro_frontend
-    restart: always
+
+    image: nginx:latest
+
+    container_name: techpro-frontend
+
+    restart: unless-stopped
+
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+
+    depends_on:
+      - backend
+
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
-      - ./frontend:/usr/share/nginx/html
-      - ./nginx/conf.d:/etc/nginx/conf.d
+
+    networks:
+      - techpro_network
 
 volumes:
-  pgdata:
+
+  postgres_data:
+
+networks:
+
+  techpro_network:
